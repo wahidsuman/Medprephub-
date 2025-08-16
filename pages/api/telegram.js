@@ -30,19 +30,16 @@ export default async function handler(req, res) {
     const update = req.body;
     const msg = update?.message;
     const chatId = msg?.chat?.id ? String(msg.chat.id) : "";
-    const textRaw = (msg?.text || "").trim();
+    const text = (msg?.text || "").trim();
 
-    // Only allow the admin chat to interact
+    // Only your admin chat can talk to the bot
     if (!chatId || chatId !== ADMIN_CHAT_ID) {
-      // Ignore other users silently
       return res.status(200).send("OK");
     }
 
-    const text = textRaw;
-
-    // Basic commands
+    // Commands
     if (/^\/start$/i.test(text)) {
-      await tgSend(chatId, "👋 Hi! I’m your AI Website Manager. Use /ping, /whoami, send YES/NO to approve, or just type your request.");
+      await tgSend(chatId, "👋 Hi! I’m your AI Website Manager. Use /ping, /whoami, YES/NO to approve, or just send a request.");
       return res.status(200).send("OK");
     }
     if (/^\/ping$/i.test(text)) {
@@ -54,7 +51,7 @@ export default async function handler(req, res) {
       return res.status(200).send("OK");
     }
 
-    // Approval flow
+    // Approvals
     if (/^YES$/i.test(text)) {
       if (!SITE_URL) {
         await tgSend(chatId, "⚠️ SITE_URL not set in env. Cannot publish.");
@@ -69,21 +66,18 @@ export default async function handler(req, res) {
       return res.status(200).send("OK");
     }
 
-    // If it’s not a command/approval, treat as AI chat to the manager
+    // AI chat
     await tgTyping(chatId);
 
     const system = `
 You are an AI Website Administrator for a NEET PG / INI-CET / FMGE prep site.
-- Be concise, accurate, SEO-aware.
-- NEVER publish changes; only suggest or prepare JSON until owner explicitly says YES.
-- If asked to post, reply with what you will post and wait for YES.
+Be concise, accurate, SEO-aware. NEVER publish; only propose or prepare JSON until explicit YES.
+If asked to post, draft what you will publish and wait for YES.
 `.trim();
-
-    const user = text;
 
     const reply = await askOpenAI({
       system,
-      user,
+      user: text,
       model: process.env.OPENAI_MODEL || "gpt-4o-mini",
       max_tokens: 900,
       temperature: 0.3,
@@ -93,9 +87,7 @@ You are an AI Website Administrator for a NEET PG / INI-CET / FMGE prep site.
     return res.status(200).send("OK");
   } catch (err) {
     console.error("Telegram handler error:", err);
-    try {
-      await tgSend(String(process.env.TELEGRAM_CHAT_ID || ""), "⚠️ Error handling your request.");
-    } catch {}
+    try { await tgSend(String(process.env.TELEGRAM_CHAT_ID || ""), "⚠️ Error handling your request."); } catch {}
     return res.status(200).send("OK");
   }
 }
