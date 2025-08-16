@@ -29,3 +29,4 @@ export async function getStaticProps() {
     revalidate: 60, // re-generate page at most once per minute
   };
 }
+
