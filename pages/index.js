@@ -1,4 +1,4 @@
-import { client } from "../lib/sanity";
+import { safeFetch } from "../lib/sanity";
 
 export default function Home({ posts }) {
   return (
@@ -22,7 +22,7 @@ export default function Home({ posts }) {
 
 export async function getStaticProps() {
   const query = `*[_type == "post"]{ _id, title } | order(_createdAt desc)[0...20]`;
-  const posts = await client.fetch(query).catch(() => []);
+  const posts = (await safeFetch(query)) || [];
 
   return {
     props: { posts: posts || [] },
