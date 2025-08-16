@@ -1,49 +1,41 @@
-// pages/blog.js
-import Head from "next/head";
+// /pages/blog.js
 import Link from "next/link";
 import { safeFetch } from "../lib/sanity";
 
-export default function BlogPage({ posts = [] }) {
+const POSTS_QUERY = /* groq */ `
+*[_type == "post"] | order(publishedAt desc)[0...20]{
+  _id,
+  title,
+  "slug": slug.current,
+  publishedAt
+}
+`;
+
+export default function Blog({ posts }) {
   return (
-    <>
-      <Head>
-        <title>Blog | Medprephub</title>
-        <meta name="description" content="Latest posts generated & managed by your AI admin." />
-      </Head>
+    <main style={{ maxWidth: 800, margin: "3rem auto", padding: "0 1rem" }}>
+      <h1 style={{ fontSize: "3rem", fontWeight: 800, marginBottom: "2rem" }}>
+        Latest Posts
+      </h1>
 
-      <main style={{ maxWidth: 800, margin: "2rem auto", padding: "0 1rem" }}>
-        <h1 style={{ fontSize: "2.25rem", marginBottom: "0.5rem" }}>Blog</h1>
-        <p>Latest posts generated & managed by your AI admin.</p>
-        <hr style={{ margin: "1rem 0" }} />
+      {posts.length === 0 && <p>No posts yet.</p>}
 
-        {posts.length === 0 ? (
-          <p>No posts yet. Try hitting <code>/api/seed</code> once, then refresh this page.</p>
-        ) : (
-          <ul style={{ lineHeight: 1.6 }}>
-            {posts.map((p) => (
-              <li key={p._id}>
-                <Link href={`/blog/${p.slug?.current || p.slug}`}>{p.title}</Link>
-                <div style={{ color: "#666", fontSize: "0.9rem" }}>{p.excerpt || ""}</div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <p style={{ marginTop: "2rem" }}>
-          ← <Link href="/">Back to home</Link>
-        </p>
-      </main>
-    </>
+      {posts.map((p) => (
+        <article key={p._id} style={{ marginBottom: "1.25rem", borderBottom: "1px solid #eee", paddingBottom: "1rem" }}>
+          <h2 style={{ fontSize: "2rem", fontWeight: 700, margin: 0 }}>
+            <Link href={`/blog/${p.slug}`}>{p.title}</Link>
+          </h2>
+          <div style={{ color: "#666", marginTop: ".25rem" }}>
+            {p.publishedAt ? new Date(p.publishedAt).toISOString().slice(0, 10) : ""}
+          </div>
+        </article>
+      ))}
+    </main>
   );
 }
 
 export async function getStaticProps() {
-  // Fetch latest posts; if anything fails, safeFetch returns []
-  const query = `*[_type == "post"] | order(_createdAt desc)[0...20]{
-    _id, title, "slug": slug, excerpt
-  }`;
-  const posts = (await safeFetch(query)) || [];
-
+  const posts = (await safeFetch(POSTS_QUERY)) || [];
   return {
     props: { posts },
     revalidate: 60, // ISR
