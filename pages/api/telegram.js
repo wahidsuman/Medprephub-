@@ -13,6 +13,9 @@ export default async function handler(req, res) {
     const chatId = message.chat.id;
     const text = (message.text || "").trim();
 
+    // 🔑 Admin ID (replace with your own or put in process.env.ADMIN_ID)
+    const ADMIN_ID = 1044834121;
+
     let reply = "";
 
     switch (text) {
@@ -28,12 +31,21 @@ export default async function handler(req, res) {
         reply = `Your ID: ${chatId}`;
         break;
 
+      // Example admin-only command
+      case "/secret":
+        if (chatId === ADMIN_ID) {
+          reply = "🔒 Welcome Admin! You can access secret commands here.";
+        } else {
+          reply = "🚫 You are not authorized to use this command.";
+        }
+        break;
+
       default:
         reply = `❓ Unknown command.\nAvailable: /ping, /whoami, /start`;
         break;
     }
 
-    // Send the reply
+    // Send reply back
     await fetch(
       `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
       {
