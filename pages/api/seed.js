@@ -1,40 +1,42 @@
-// pages/api/seed.js
-import client from "../../lib/sanity";
+// /pages/api/seed.js
+import { writeClient } from "../../lib/sanity";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method Not Allowed" });
-  }
-
-  if (!client) {
-    return res.status(500).json({
-      ok: false,
-      error:
-        "Sanity client not configured. Set SANITY_PROJECT_ID, SANITY_DATASET, and SANITY_API_TOKEN in Vercel.",
-    });
-  }
-
   try {
-    const now = new Date();
-    const slug = `hello-from-seed-${now.getTime()}`;
+    // Guard: environment must be present
+    if (!process.env.SANITY_PROJECT_ID || !process.env.SANITY_DATASET || !process.env.SANITY_API_TOKEN) {
+      return res.status(500).json({
+        ok: false,
+        error: "Sanity client not configured. Set SANITY_PROJECT_ID, SANITY_DATASET, and SANITY_API_TOKEN in Vercel.",
+      });
+    }
+
+    // Create a simple "post" document (requires `post` schema in your Sanity project)
+    const now  = Date.now();
+    const slug = `hello-from-seed-${now}`;
 
     const doc = {
       _type: "post",
-      // Let Sanity assign _id automatically (safer than hardcoding)
       title: "Hello from Seed",
       slug: { _type: "slug", current: slug },
+      publishedAt: new Date().toISOString(),
       body: [
         {
           _type: "block",
-          children: [{ _type: "span", text: "This is a seeded post created via API." }],
+          children: [
+            { _type: "span", text: "This post was created via the /api/seed route." },
+          ],
         },
       ],
-      _createdAt: now.toISOString(),
+      // Optional tags/fields if your schema supports them:
+      // tags: ["announcement", "seed"],
+      // category: "General",
     };
 
-    const created = await client.create(doc);
-    return res.status(200).json({ ok: true, slug: created?.slug?.current, id: created?._id });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e) });
+    const result = await writeClient.create(doc);
+    return res.status(200).json({ ok: true, id: result._id, slug });
+  } catch (err) {
+    console.error("Seed error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
   }
-  }
+}
