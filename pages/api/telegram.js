@@ -1,5 +1,3 @@
-// pages/api/telegram.js
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(200).json({ ok: true, message: "Telegram webhook OK" });
@@ -7,53 +5,38 @@ export default async function handler(req, res) {
 
   try {
     const update = req.body;
-    const message = update?.message;
-    if (!message) return res.status(200).send("OK");
+    const msg = update?.message;
+    if (!msg) return res.status(200).send("OK");
 
-    const chatId = message.chat.id;
-    const text = (message.text || "").trim();
-
-    // 🔑 Admin ID (replace with your own or put in process.env.ADMIN_ID)
-    const ADMIN_ID = 1044834121;
+    const chatId = msg.chat.id;
+    const text = (msg.text || "").trim();
+    const ADMIN_ID = Number(process.env.ADMIN_TELEGRAM_ID);
 
     let reply = "";
-
     switch (text) {
       case "/start":
         reply = "👋 Hi! I am your site admin bot.\nTry /ping or /whoami.";
         break;
-
       case "/ping":
         reply = "✅ Bot is working";
         break;
-
       case "/whoami":
         reply = `Your ID: ${chatId}`;
         break;
-
-      // Example admin-only command
       case "/secret":
-        if (chatId === ADMIN_ID) {
-          reply = "🔒 Welcome Admin! You can access secret commands here.";
-        } else {
-          reply = "🚫 You are not authorized to use this command.";
-        }
+        reply = chatId === ADMIN_ID
+          ? "🔒 Welcome Admin! Secret commands ready."
+          : "🚫 You are not authorized to use this command.";
         break;
-
       default:
-        reply = `❓ Unknown command.\nAvailable: /ping, /whoami, /start`;
-        break;
+        reply = "❓ Unknown command. Available: /start /ping /whoami";
     }
 
-    // Send reply back
-    await fetch(
-      `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text: reply }),
-      }
-    );
+    await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: reply })
+    });
 
     return res.status(200).send("OK");
   } catch (err) {
