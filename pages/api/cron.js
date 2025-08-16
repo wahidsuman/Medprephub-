@@ -1,8 +1,11 @@
 // pages/api/cron.js
-
 export default async function handler(req, res) {
   try {
-    const chatId = process.env.TELEGRAM_CHAT_ID || "1044834121"; // ✅ fallback
+    const chatId = process.env.TELEGRAM_CHAT_ID; // now required from env
+    if (!chatId) {
+      return res.status(500).json({ ok: false, error: "TELEGRAM_CHAT_ID missing" });
+    }
+
     const text = "⏰ Cron job executed! Hello from Vercel";
 
     const tgRes = await fetch(
@@ -10,10 +13,7 @@ export default async function handler(req, res) {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text,
-        }),
+        body: JSON.stringify({ chat_id: chatId, text }),
       }
     );
 
