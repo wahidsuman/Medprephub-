@@ -1,39 +1,51 @@
 // pages/blog.js
+import Head from "next/head";
 import Link from "next/link";
 import { safeFetch } from "../lib/sanity";
 
-export default function Blog({ posts }) {
+export default function BlogPage({ posts = [] }) {
   return (
-    <main style={{ maxWidth: 720, margin: "40px auto", padding: "0 16px" }}>
-      <h1 style={{ marginBottom: 16 }}>Latest Posts</h1>
+    <>
+      <Head>
+        <title>Blog | Medprephub</title>
+        <meta name="description" content="Latest posts generated & managed by your AI admin." />
+      </Head>
 
-      {(!posts || posts.length === 0) && (
-        <p>No posts yet. Try seeding via <code>/api/seed</code> or add content in Sanity.</p>
-      )}
+      <main style={{ maxWidth: 800, margin: "2rem auto", padding: "0 1rem" }}>
+        <h1 style={{ fontSize: "2.25rem", marginBottom: "0.5rem" }}>Blog</h1>
+        <p>Latest posts generated & managed by your AI admin.</p>
+        <hr style={{ margin: "1rem 0" }} />
 
-      <ul style={{ listStyle: "none", padding: 0 }}>
-        {posts.map((p) => (
-          <li key={p._id} style={{ padding: "12px 0", borderBottom: "1px solid #eee" }}>
-            <Link href={`/blog/${p.slug?.current || ""}`} style={{ textDecoration: "none" }}>
-              <h3 style={{ margin: 0 }}>{p.title || "(Untitled)"}</h3>
-            </Link>
-            <small style={{ color: "#666" }}>{p._createdAt?.slice(0, 10)}</small>
-          </li>
-        ))}
-      </ul>
-    </main>
+        {posts.length === 0 ? (
+          <p>No posts yet. Try hitting <code>/api/seed</code> once, then refresh this page.</p>
+        ) : (
+          <ul style={{ lineHeight: 1.6 }}>
+            {posts.map((p) => (
+              <li key={p._id}>
+                <Link href={`/blog/${p.slug?.current || p.slug}`}>{p.title}</Link>
+                <div style={{ color: "#666", fontSize: "0.9rem" }}>{p.excerpt || ""}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <p style={{ marginTop: "2rem" }}>
+          ← <Link href="/">Back to home</Link>
+        </p>
+      </main>
+    </>
   );
 }
 
 export async function getStaticProps() {
-  const query = `
-    *[_type == "post"] | order(_createdAt desc) [0..19]{
-      _id, title, slug, _createdAt
-    }
-  `;
+  // Fetch latest posts; if anything fails, safeFetch returns []
+  const query = `*[_type == "post"] | order(_createdAt desc)[0...20]{
+    _id, title, "slug": slug, excerpt
+  }`;
   const posts = (await safeFetch(query)) || [];
+
   return {
     props: { posts },
-    revalidate: 60, // ISR: refresh every 60s
+    revalidate: 60, // ISR
   };
 }
