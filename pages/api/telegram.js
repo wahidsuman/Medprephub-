@@ -1,78 +1,56 @@
-// pages/api/telegram.js
-import { tgSend } from "../../lib/telegram";
-
-const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://medprephub.vercel.app";
-const ADMIN_ID = process.env.TELEGRAM_CHAT_ID; // your own Telegram ID (string)
-
+// /pages/api/telegram.js
 export default async function handler(req, res) {
-  // Health check via GET
   if (req.method !== "POST") {
     return res.status(200).json({ ok: true, message: "Telegram webhook OK" });
   }
 
   try {
     const update = req.body;
-    const msg = update?.message || update?.edited_message;
-    if (!msg) return res.status(200).send("OK");
+    const msg = update?.message;
+    const chatId = msg?.chat?.id;
+    const text = (msg?.text || "").trim();
 
-    const chatId = String(msg.chat?.id || "");
-    const textRaw = (msg.text || "").trim();
-    const text = textRaw.toLowerCase();
-
-    // Only allow you (ADMIN_ID) to use manager commands.
-    const isOwner = ADMIN_ID && String(chatId) === String(ADMIN_ID);
-
-    // ----- YES / NO approvals -----
-    if (isOwner && (textRaw === "YES" || textRaw === "NO")) {
-      const url = `${BASE}/api/manager/approve?action=${textRaw}`;
-      await fetch(url);
+    // Only respond to your admin chat
+    const ADMIN_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+    if (!chatId || String(chatId) !== String(ADMIN_CHAT_ID)) {
       return res.status(200).send("OK");
     }
 
-    // ----- Conversational commands (owner only) -----
-    if (isOwner && text.startsWith("/note ")) {
-      const msgToStore = textRaw.slice(6); // keep original casing after the space
-      await fetch(`${BASE}/api/manager/inbox`, {
+    const send = (t) =>
+      fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msgToStore, from: "owner" }),
+        body: JSON.stringify({ chat_id: chatId, text: t }),
       });
+
+    // Basic commands
+    if (/^\/ping$/i.test(text)) {
+      await send("✅ Bot is working");
+      return res.status(200).send("OK");
+    }
+    if (/^\/whoami$/i.test(text)) {
+      await send(`Your ID: ${chatId}`);
+      return res.status(200).send("OK");
+    }
+    if (/^\/start$/i.test(text)) {
+      await send("👋 Hi! I am your site admin bot. Try /ping or reply YES/NO to approve plans.");
       return res.status(200).send("OK");
     }
 
-    if (isOwner && text === "/inbox") {
-      const r = await fetch(`${BASE}/api/manager/inbox`);
-      const { items = [] } = await r.json();
-      const lines = items.length
-        ? items.map(i => `• ${new Date(i.when).toLocaleString()}: ${i.message}`).join("\n")
-        : "Inbox is empty.";
-      await tgSend(chatId, `<b>Inbox</b>\n${lines}`);
+    // Approval flow
+    if (/^YES$/i.test(text)) {
+      // Call approve endpoint
+      await fetch(`${process.env.SITE_URL}/api/manager/approve?decision=YES`);
+      // (SITE_URL should be set to your https://medprephub.vercel.app)
+      return res.status(200).send("OK");
+    }
+    if (/^NO$/i.test(text)) {
+      await send("❌ Approval declined. No changes published.");
       return res.status(200).send("OK");
     }
 
-    if (isOwner && text === "/clearinbox") {
-      await fetch(`${BASE}/api/manager/inbox`, { method: "DELETE" });
-      return res.status(200).send("OK");
-    }
-
-    // ----- Basic public commands -----
-    if (text === "/start") {
-      await tgSend(chatId, "👋 Hi! I am your site manager bot. Try /ping or /whoami.");
-      return res.status(200).send("OK");
-    }
-
-    if (text === "/ping") {
-      await tgSend(chatId, "✅ Bot is working");
-      return res.status(200).send("OK");
-    }
-
-    if (text === "/whoami") {
-      await tgSend(chatId, `Your ID: ${chatId}`);
-      return res.status(200).send("OK");
-    }
-
-    // Unknown commands
-    await tgSend(chatId, "❓ Unknown command. Available: /start /ping /whoami");
+    // Default echo
+    await send(`Echo: ${text}`);
     return res.status(200).send("OK");
   } catch (err) {
     console.error("Telegram handler error:", err);
