@@ -16,5 +16,6 @@
     "@octokit/rest": "^20.1.1",
     "gray-matter": "^4.0.3",
     "slugify": "^1.6.6"
+    "marked": "^12.0.2"
   }
 }
