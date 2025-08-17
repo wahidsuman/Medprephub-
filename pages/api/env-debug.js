@@ -1,13 +1,20 @@
-export default function handler(req, res) {
-  const safe = {
-    SANITY_PROJECT_ID: process.env.SANITY_PROJECT_ID,
-    SANITY_DATASET: process.env.SANITY_DATASET,
-    // show if a secret exists without revealing it
-    SANITY_API_TOKEN: process.env.SANITY_API_TOKEN ? '[set]' : '[missing]',
-    OPENAI_MODEL: process.env.OPENAI_MODEL,
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY ? '[set]' : '[missing]',
-    NODE_ENV: process.env.NODE_ENV,
-    VERCEL_ENV: process.env.VERCEL_ENV
-  };
-  res.status(200).json(safe);
+// pages/api/debug-posts.js
+import { listPosts } from "../../lib/posts"; // same helper your pages use
+import fs from "fs";
+import path from "path";
+
+export default async function handler(req, res) {
+  try {
+    const contentDir = path.join(process.cwd(), "content", "posts");
+    const files = fs.existsSync(contentDir) ? fs.readdirSync(contentDir) : [];
+    const posts = await listPosts(); // whatever your lib returns
+    res.status(200).json({
+      cwd: process.cwd(),
+      contentDir,
+      filesInContentPosts: files,
+      postsFromLib: posts.map(p => ({ slug: p.slug, title: p.title })),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message, stack: e.stack });
+  }
 }
