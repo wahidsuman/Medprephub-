@@ -1,8 +1,12 @@
 ---
-title: "Understanding Appendicitis: A Key Topic for NEET PG Aspirants"
-date: "2025-08-17"
+title: Appendicitis for NEET PG
+date: 2024-08-17
+slug: appendicitis-for-neet-pg
 ---
 
+# Understanding Appendicitis: A Key Topic for NEET PG
+
+...your content...
 
 Appendicitis is a common surgical emergency that every medical student should be familiar with, especially those preparing for NEET PG, INI-CET, or FMGE. Understanding its pathophysiology, clinical presentation, and management is crucial for success in these competitive exams.
 
