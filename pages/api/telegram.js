@@ -161,11 +161,100 @@ export default async function handler(req, res) {
       }
     }
 
-    // Fallback: normal chat message (no command)
-    await sendMessage(
-      chatId,
-      "I’m your website manager.\nUse `/propose <title>` to create a post PR."
-    );
+    // Natural language processing for complex requests
+    const naturalLanguageRequest = message.text.toLowerCase();
+
+    // Detect request types
+    if (naturalLanguageRequest.includes("change ui") || 
+        naturalLanguageRequest.includes("make it more attractive") ||
+        naturalLanguageRequest.includes("design") ||
+        naturalLanguageRequest.includes("layout")) {
+
+      await sendMessage(chatId, `🎨 UI improvement request detected: "${message.text}"`);
+
+      try {
+        const executeRes = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/manager/execute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            command: message.text,
+            task_type: "ui_improvement"
+          })
+        });
+
+        return res.status(200).json({ ok: true });
+      } catch (err) {
+        await sendMessage(chatId, `⚠️ Error processing UI request: ${err.message}`);
+      }
+    }
+
+    else if (naturalLanguageRequest.includes("content") || 
+             naturalLanguageRequest.includes("post") ||
+             naturalLanguageRequest.includes("article") ||
+             naturalLanguageRequest.includes("write")) {
+
+      await sendMessage(chatId, `📝 Content generation request: "${message.text}"`);
+
+      try {
+        const executeRes = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/manager/execute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            command: message.text,
+            task_type: "content_generation"
+          })
+        });
+
+        return res.status(200).json({ ok: true });
+      } catch (err) {
+        await sendMessage(chatId, `⚠️ Error generating content: ${err.message}`);
+      }
+    }
+
+    else if (naturalLanguageRequest.includes("seo") || 
+             naturalLanguageRequest.includes("search") ||
+             naturalLanguageRequest.includes("ranking") ||
+             naturalLanguageRequest.includes("keywords")) {
+
+      await sendMessage(chatId, `📈 SEO optimization request: "${message.text}"`);
+
+      try {
+        const executeRes = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/manager/execute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            command: message.text,
+            task_type: "seo_optimization"
+          })
+        });
+
+        return res.status(200).json({ ok: true });
+      } catch (err) {
+        await sendMessage(chatId, `⚠️ Error with SEO request: ${err.message}`);
+      }
+    }
+
+    // Fallback: general assistance
+    else {
+      await sendMessage(
+        chatId,
+        [
+          "*🤖 AI Website Manager Ready*",
+          "",
+          "Just tell me what you want:",
+          "• \"Change the UI to be more modern\"", 
+          "• \"Create content about cardiology MCQs\"",
+          "• \"Improve SEO for NEET PG keywords\"",
+          "• \"Analyze competitors and suggest improvements\"",
+          "",
+          "Or use commands:",
+          "• `/analyze` – full site analysis",
+          "• `/propose <title>` – create content PR",
+          "• `/ping` – health check",
+        ].join("\n")
+      );
+    }
+
     return res.status(200).json({ ok: true });
   } catch (e) {
     console.error("telegram handler error:", e);
