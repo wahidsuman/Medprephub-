@@ -1,25 +1,26 @@
-// pages/posts/[slug].js
-import { getAllPosts, getPostBySlug } from "../../lib/posts";
-
-export async function getStaticPaths() {
-  const posts = getAllPosts();
-  return {
-    paths: posts.map(p => ({ params: { slug: p.slug } })),
-    fallback: false,
-  };
-}
+import fs from "fs";
+import path from "path";
+import matter from "gray-matter";
+import { remark } from "remark";
+import html from "remark-html";
 
 export async function getStaticProps({ params }) {
-  const post = await getPostBySlug(params.slug);
-  return { props: { post } };
+  const slug = params.slug;
+  const fullPath = path.join(process.cwd(), "content/posts", `${slug}.md`);
+  const file = fs.readFileSync(fullPath, "utf8");
+  const { data, content } = matter(file);
+
+  const processed = await remark().use(html).process(content);
+  const contentHtml = processed.toString();
+
+  return { props: { frontmatter: data, contentHtml } };
 }
 
-export default function PostPage({ post }) {
+export default function Post({ frontmatter, contentHtml }) {
   return (
-    <main style={{maxWidth: 720, margin: "2rem auto", padding: "0 1rem"}}>
-      <h1>{post.title}</h1>
-      {post.date ? <div style={{opacity:.7}}>{post.date}</div> : null}
-      <article dangerouslySetInnerHTML={{ __html: post.contentHtml }} />
+    <main>
+      <h1>{frontmatter.title}</h1>
+      <article dangerouslySetInnerHTML={{ __html: contentHtml }} />
     </main>
   );
-        }
+}
