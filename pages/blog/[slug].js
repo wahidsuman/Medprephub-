@@ -1,37 +1,28 @@
-import fs from "fs";
-import path from "path";
-import matter from "gray-matter";
+// pages/blog/[slug].js
+import Head from "next/head";
+import { getAllPostsMeta, getPostBySlug } from "../../lib/posts";
 
-const CONTENT_DIR = process.env.SITE_CONTENT_DIR || "content/posts";
-
-function readPost(slug) {
-  const file = path.join(process.cwd(), CONTENT_DIR, `${slug}.md`);
-  if (!fs.existsSync(file)) return null;
-  const source = fs.readFileSync(file, "utf8");
-  const { data, content } = matter(source);
+export async function getStaticPaths() {
+  const posts = getAllPostsMeta();
   return {
-    title: data.title || slug.replace(/-/g, " "),
-    date: data.date || null,
-    content,
+    paths: posts.map(p => ({ params: { slug: p.slug } })),
+    fallback: "blocking",
   };
 }
 
-export default function PostPage({ post }) {
-  if (!post) return <main style={{maxWidth:760,margin:"40px auto",padding:"0 16px"}}>Not found</main>;
-  return (
-    <main style={{ maxWidth: 760, margin: "40px auto", padding: "0 16px" }}>
-      <h1>{post.title}</h1>
-      {post.date && <p style={{ color: "#888" }}>{post.date}</p>}
-      <article style={{ lineHeight: 1.7, marginTop: 20, whiteSpace: "pre-wrap" }}>
-        {post.content}
-      </article>
-    </main>
-  );
+export async function getStaticProps({ params }) {
+  const post = await getPostBySlug(params.slug);
+  if (!post) return { notFound: true };
+  return { props: { post }, revalidate: 60 };
 }
 
-// server-side so we don't need a rebuild for new posts
-export async function getServerSideProps({ params }) {
-  const slug = params?.slug || "";
-  const post = readPost(slug);
-  return { props: { post } };
-    }
+export default function PostPage({ post }) {
+  return (
+    <main style={{ maxWidth: 800, margin: "2rem auto", padding: "0 1rem" }}>
+      <Head><title>{post.title}</title></Head>
+      <h1>{post.title}</h1>
+      {post.date && <p><small>{post.date}</small></p>}
+      <article dangerouslySetInnerHTML={{ __html: post.contentHtml }} />
+    </main>
+  );
+  }
