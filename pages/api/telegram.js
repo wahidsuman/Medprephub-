@@ -1,103 +1,94 @@
-// pages/api/telegram.js
-import fetch from "node-fetch";
+// Simple Telegram webhook that can:
+//  - /ping
+//  - /propose <title>  (drafts a Markdown post, opens a PR)
+//  - /approve <number> (merges a PR by number)
+// Replies back to your chat ID only (safety).
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const OWNER_ID = process.env.TELEGRAM_CHAT_ID;        // your Telegram user id
-const OPENAI_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+import { createPostPR, mergePR } from "@/lib/github";
+import { draftMarkdown } from "@/lib/content";
 
-const TG_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID; // your personal chat ID
+const SITE_CONTENT_DIR = process.env.SITE_CONTENT_DIR || "content/posts";
 
-async function sendMessage(chatId, text) {
-  const url = `${TG_API}/sendMessage`;
+async function sendMessage(text) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
   await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text }),
   });
-}
-
-async function callOpenAI(prompt) {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${OPENAI_KEY}`,
-    },
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an AI Website Manager for a Medical Exam Prep site (NEET PG, INI-CET, FMGE). " +
-            "When asked to create MCQs, return clean, numbered items with 4 options (A–D), " +
-            "the correct answer, and a 1–2 line explanation. Keep language precise and exam-appropriate.",
-        },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.3,
-    }),
-  });
-
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`OpenAI error: ${res.status} ${t}`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || "Sorry, I couldn’t generate a response.";
 }
 
 export default async function handler(req, res) {
-  // Telegram webhook requires POST
-  if (req.method !== "POST") {
-    return res.status(200).json({ ok: true, message: "Telegram webhook OK" });
-  }
+  if (req.method !== "POST") return res.status(405).end();
 
   try {
     const update = req.body;
 
-    const chatId = update?.message?.chat?.id;
-    const text = update?.message?.text?.trim() || "";
-    const fromId = String(update?.message?.from?.id || "");
+    // Only react to plain text messages
+    const msg = update?.message;
+    const chatId = msg?.chat?.id?.toString();
+    const text = msg?.text?.trim() || "";
 
-    if (!chatId || !text) {
-      return res.status(200).json({ ok: true });
-    }
-
-    // Security: only allow the owner to use this bot
-    if (OWNER_ID && String(chatId) !== String(OWNER_ID)) {
-      await sendMessage(chatId, "Access denied.");
-      return res.status(200).json({ ok: true });
+    // Ignore messages not from your configured chat
+    if (!chatId || (TELEGRAM_CHAT_ID && chatId !== TELEGRAM_CHAT_ID.toString())) {
+      return res.status(200).json({ ok: true }); // silently ignore
     }
 
     // Commands
     if (text === "/ping") {
-      await sendMessage(chatId, "✅ Bot is working");
+      await sendMessage("✅ Bot is online.");
       return res.status(200).json({ ok: true });
     }
 
-    if (text === "/whoami") {
-      await sendMessage(chatId, `Your ID: ${fromId}`);
+    if (text.startsWith("/propose")) {
+      // /propose Title of post...
+      const title = text.replace("/propose", "").trim() || "Untitled Post";
+      await sendMessage(`✍️ Drafting: “${title}”…`);
+
+      const niche = process.env.TOPIC_NICHE || "";
+      const { filename, markdown } = await draftMarkdown({ title, niche });
+
+      // Open a PR with the new file
+      const pr = await createPostPR({
+        filepath: `${SITE_CONTENT_DIR}/${filename}`,
+        content: markdown,
+        title: `Proposed: ${title}`,
+        body: `Auto-proposed via Telegram.\n\nNiche: ${niche || "(not set)"}`,
+      });
+
+      await sendMessage(
+        `📄 Proposed post:\n• File: ${filename}\n• PR: #${pr.number} – ${pr.html_url}\n\nReply with /approve ${pr.number} to merge.`
+      );
       return res.status(200).json({ ok: true });
     }
 
-    // Anything else → use OpenAI
-    try {
-      if (!OPENAI_KEY) {
-        await sendMessage(chatId, "OpenAI key missing. Set OPENAI_API_KEY in Vercel.");
-      } else {
-        const reply = await callOpenAI(text);
-        await sendMessage(chatId, reply);
+    if (text.startsWith("/approve")) {
+      // /approve 12
+      const num = parseInt(text.replace("/approve", "").trim(), 10);
+      if (Number.isNaN(num)) {
+        await sendMessage("❗ Usage: /approve <pr-number>");
+        return res.status(200).json({ ok: true });
       }
-    } catch (err) {
-      await sendMessage(chatId, `⚠️ ${err.message.slice(0, 300)}`);
+      await sendMessage(`🔧 Merging PR #${num}…`);
+      const merged = await mergePR(num);
+      await sendMessage(
+        merged.merged
+          ? `✅ Merged PR #${num}.`
+          : `⚠️ Could not merge PR #${num}: ${merged.message || "unknown reason"}`
+      );
+      return res.status(200).json({ ok: true });
     }
 
+    // Help text
+    await sendMessage(
+      "Commands:\n• /ping\n• /propose <title>\n• /approve <pr-number>"
+    );
     return res.status(200).json({ ok: true });
   } catch (e) {
-    console.error(e);
+    await sendMessage(`⚠️ Error: ${e.message}`);
     return res.status(200).json({ ok: true });
   }
 }
