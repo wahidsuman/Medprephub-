@@ -1,14 +1,14 @@
-// Simple Telegram webhook that can:
-//  - /ping
-//  - /propose <title>  (drafts a Markdown post, opens a PR)
-//  - /approve <number> (merges a PR by number)
-// Replies back to your chat ID only (safety).
+// pages/api/telegram.js
+// Commands:
+//   /ping
+//   /propose <title>
+//   /approve <pr-number>
 
-import { createPostPR, mergePR } from "@/lib/github";
-import { draftMarkdown } from "@/lib/content";
+import { createPostPR, mergePR } from "../../lib/github.js";
+import { draftMarkdown } from "../../lib/content.js";
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID; // your personal chat ID
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID; // your personal chat id
 const SITE_CONTENT_DIR = process.env.SITE_CONTENT_DIR || "content/posts";
 
 async function sendMessage(text) {
@@ -26,37 +26,33 @@ export default async function handler(req, res) {
 
   try {
     const update = req.body;
-
-    // Only react to plain text messages
     const msg = update?.message;
     const chatId = msg?.chat?.id?.toString();
-    const text = msg?.text?.trim() || "";
+    const text = (msg?.text || "").trim();
 
-    // Ignore messages not from your configured chat
+    // Only respond to YOUR chat
     if (!chatId || (TELEGRAM_CHAT_ID && chatId !== TELEGRAM_CHAT_ID.toString())) {
-      return res.status(200).json({ ok: true }); // silently ignore
+      return res.status(200).json({ ok: true });
     }
 
-    // Commands
     if (text === "/ping") {
       await sendMessage("✅ Bot is online.");
       return res.status(200).json({ ok: true });
     }
 
     if (text.startsWith("/propose")) {
-      // /propose Title of post...
+      // Expect: /propose Title of post
       const title = text.replace("/propose", "").trim() || "Untitled Post";
       await sendMessage(`✍️ Drafting: “${title}”…`);
 
       const niche = process.env.TOPIC_NICHE || "";
       const { filename, markdown } = await draftMarkdown({ title, niche });
 
-      // Open a PR with the new file
       const pr = await createPostPR({
         filepath: `${SITE_CONTENT_DIR}/${filename}`,
         content: markdown,
         title: `Proposed: ${title}`,
-        body: `Auto-proposed via Telegram.\n\nNiche: ${niche || "(not set)"}`,
+        body: `Auto-proposed via Telegram.\nNiche: ${niche || "(not set)"}`,
       });
 
       await sendMessage(
@@ -66,7 +62,6 @@ export default async function handler(req, res) {
     }
 
     if (text.startsWith("/approve")) {
-      // /approve 12
       const num = parseInt(text.replace("/approve", "").trim(), 10);
       if (Number.isNaN(num)) {
         await sendMessage("❗ Usage: /approve <pr-number>");
@@ -82,10 +77,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // Help text
-    await sendMessage(
-      "Commands:\n• /ping\n• /propose <title>\n• /approve <pr-number>"
-    );
+    await sendMessage("Commands:\n• /ping\n• /propose <title>\n• /approve <pr-number>");
     return res.status(200).json({ ok: true });
   } catch (e) {
     await sendMessage(`⚠️ Error: ${e.message}`);
