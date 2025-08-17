@@ -45,10 +45,10 @@ export default async function handler(req, res) {
 
     // Minimal site context for now (we’ll enrich in next steps)
     const siteContext = `
-      Site: Medprephub (NEET PG / FMGE / INI-CET exam prep)
-      Existing sections: blog list, seed content available.
-      Constraints: NEVER publish without explicit YES approval. Keep medical accuracy and SEO in mind.
-    `;
+  Site: Medprephub (NEET PG / FMGE / INI-CET exam prep)
+  Existing sections: blog list, real posts from content/posts/.
+  Constraints: NEVER publish without explicit YES approval. Keep medical accuracy and SEO in mind.
+`;
 
     const system = `
 You are an AI Website Administrator for a Medical Exam Prep site (NEET PG, FMGE, INI-CET).
