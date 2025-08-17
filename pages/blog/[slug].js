@@ -1,34 +1,30 @@
 // pages/blog/[slug].js
-import { getAllPostSlugs, getPostBySlug } from "../../lib/posts";
-import { marked } from "marked";
+import Head from "next/head";
+import { getAllPosts, getPostBySlug } from "../../lib/posts";
 
 export async function getStaticPaths() {
-  const slugs = getAllPostSlugs();
-  return {
-    paths: slugs.map((slug) => ({ params: { slug } })),
-    fallback: "blocking", // so new slugs work after deployment
-  };
+  const posts = getAllPosts();
+  const paths = posts.map(p => ({ params: { slug: p.slug } }));
+  return { paths, fallback: "blocking" };
 }
 
 export async function getStaticProps({ params }) {
-  const post = getPostBySlug(params.slug);
+  const post = await getPostBySlug(params.slug);
   if (!post) return { notFound: true };
-
-  return {
-    props: {
-      ...post,
-      html: marked.parse(post.content || ""),
-    },
-    revalidate: 60, // ISR
-  };
+  return { props: { post }, revalidate: 60 };
 }
 
-export default function PostPage({ title, date, html }) {
+export default function PostPage({ post }) {
   return (
-    <main style={{ maxWidth: 720, margin: "40px auto", padding: "0 16px" }}>
-      <h1>{title}</h1>
-      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 24 }}>{date}</div>
-      <article dangerouslySetInnerHTML={{ __html: html }} />
+    <main style={{maxWidth: 720, margin: "40px auto", padding: "0 16px"}}>
+      <Head><title>{post.title}</title></Head>
+      <h1>{post.title}</h1>
+      {post.date && (
+        <div style={{opacity: 0.7, marginBottom: 24}}>
+          {new Date(post.date).toLocaleDateString()}
+        </div>
+      )}
+      <article dangerouslySetInnerHTML={{ __html: post.contentHtml }} />
     </main>
   );
 }
