@@ -2,6 +2,7 @@
 // pages/api/manager/execute.js
 import { askOpenAI } from "../../../lib/openai";
 import { upsertPost } from "../../../lib/github";
+import { createUIChangePR } from "../../../lib/github-ui";
 import { tgSend } from "../../../lib/telegram";
 
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -87,27 +88,79 @@ Focus on accuracy, exam relevance, and student engagement.
 
 async function suggestUIChanges(command) {
   const uiPrompt = `
-User wants: "${command}"
+User request: "${command}"
 
-Provide specific UI/UX improvements for a medical education website:
+You are a UI/UX expert for a NEET PG medical education website. Generate actual code changes.
 
-1. Exact components to modify
-2. CSS/styling changes needed
-3. User experience improvements
-4. Mobile responsiveness considerations
+Current stack: Next.js, React, CSS modules/inline styles
 
-Be specific and actionable.
+Generate COMPLETE, WORKING code for:
+
+1. If CSS changes needed: Complete CSS file content
+2. If component changes needed: Complete React component file content  
+3. If new components needed: Complete new component code
+4. If layout changes needed: Complete layout file content
+
+Focus on:
+- Clean, modern medical education UI
+- Mobile-responsive design
+- Better user engagement
+- Professional appearance for students
+
+Provide response in this format:
+
+FILE_CHANGES:
+---
+FILE: path/to/file.css
+DESCRIPTION: Brief description
+CONTENT:
+[complete file content here]
+---
+FILE: path/to/component.js  
+DESCRIPTION: Brief description
+CONTENT:
+[complete file content here]
+---
+
+Be specific with actual file paths that exist in a Next.js project.
 `;
 
-  const suggestions = await askOpenAI({
-    system: "You are a UX expert specializing in educational websites.",
+  const aiResponse = await askOpenAI({
+    system: "You are a senior frontend developer specializing in educational websites. Generate production-ready code.",
     user: uiPrompt,
-    max_tokens: 800
+    max_tokens: 2000,
+    temperature: 0.3
   });
 
-  return {
-    message: `🎨 UI Improvement Plan:\n\n${suggestions}\n\nShould I create a PR with these changes? Reply YES to proceed.`
-  };
+  // Parse AI response to extract file changes
+  const files = parseUIChanges(aiResponse);
+  
+  if (files.length === 0) {
+    return {
+      message: `🎨 UI Analysis:\n\n${aiResponse}\n\nNo specific code changes identified. Can you be more specific about what you'd like to change?`
+    };
+  }
+
+  try {
+    // Create GitHub PR with the changes
+    const result = await createUIChangePR({
+      title: command.slice(0, 50) + "...",
+      description: `UI improvements requested: ${command}`,
+      files
+    });
+
+    return {
+      message: `🎨 UI Changes Ready!\n\n✅ Created PR: ${result.prUrl}\n\nFiles modified:\n${files.map(f => `• ${f.path}`).join('\n')}\n\n**Reply YES to merge** or view the PR first.`,
+      pr_url: result.prUrl,
+      pr_number: result.prNumber
+    };
+
+  } catch (error) {
+    console.error("UI PR creation error:", error);
+    return {
+      message: `❌ Failed to create UI changes PR: ${error.message}\n\nGenerated changes:\n${files.map(f => `• ${f.path}: ${f.description}`).join('\n')}`
+    };
+  }
 }
 
 async function optimizeSEO(command) {
@@ -167,6 +220,41 @@ function extractBetween(text, start, end) {
   if (startIndex === -1) return "";
   const endIndex = text.indexOf(end, startIndex + start.length);
   return text.slice(startIndex + start.length, endIndex > -1 ? endIndex : undefined).trim();
+}
+
+function parseUIChanges(aiResponse) {
+  const files = [];
+  const sections = aiResponse.split('---').filter(section => section.trim());
+  
+  for (const section of sections) {
+    const lines = section.trim().split('\n');
+    let filePath = '';
+    let description = '';
+    let content = '';
+    let inContent = false;
+    
+    for (const line of lines) {
+      if (line.startsWith('FILE:')) {
+        filePath = line.replace('FILE:', '').trim();
+      } else if (line.startsWith('DESCRIPTION:')) {
+        description = line.replace('DESCRIPTION:', '').trim();
+      } else if (line.startsWith('CONTENT:')) {
+        inContent = true;
+      } else if (inContent) {
+        content += line + '\n';
+      }
+    }
+    
+    if (filePath && content.trim()) {
+      files.push({
+        path: filePath,
+        description: description || `Update ${filePath}`,
+        content: content.trim()
+      });
+    }
+  }
+  
+  return files;
 }
 
 function formatAsMarkdown(content, title) {

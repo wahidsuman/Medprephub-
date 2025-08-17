@@ -185,6 +185,88 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       } catch (err) {
         await sendMessage(chatId, `⚠️ Error processing UI request: ${err.message}`);
+        return res.status(200).json({ ok: true });
+      }
+    }
+
+    // Handle PR approvals (YES with optional PR number)
+    if (naturalLanguageRequest.match(/^yes(\s+\d+)?$/i)) {
+      await sendMessage(chatId, `✅ Approval received. Processing...`);
+      
+      try {
+        // Look for PR number in message or use the most recent one
+        const prMatch = message.text.match(/\d+/);
+        const prNumber = prMatch ? prMatch[0] : null;
+        
+        if (prNumber) {
+          // Import and merge PR
+          const { mergePR } = require("../../lib/github-ui");
+          const result = await mergePR(prNumber);
+          
+          await sendMessage(chatId, `🎉 PR #${prNumber} merged successfully!\n\nChanges are now live. Vercel will auto-deploy.`);
+        } else {
+          await sendMessage(chatId, `✅ Approval noted. Please specify PR number: "YES 123"`);
+        }
+        
+        return res.status(200).json({ ok: true });
+      } catch (err) {
+        console.error("PR merge error:", err);
+        await sendMessage(chatId, `❌ Error merging PR: ${err.message}`);
+        return res.status(200).json({ ok: true });
+      }
+    }
+
+    // Handle PR rejections (NO with optional PR number)
+    if (naturalLanguageRequest.match(/^no(\s+\d+)?$/i)) {
+      await sendMessage(chatId, `❌ Request declined.`);
+      
+      try {
+        const prMatch = message.text.match(/\d+/);
+        const prNumber = prMatch ? prMatch[0] : null;
+        
+        if (prNumber) {
+          const { closePR } = require("../../lib/github-ui");
+          await closePR(prNumber);
+          await sendMessage(chatId, `🗑️ PR #${prNumber} closed.`);
+        }
+        
+        return res.status(200).json({ ok: true });
+      } catch (err) {
+        console.error("PR close error:", err);
+        await sendMessage(chatId, `⚠️ Error closing PR: ${err.message}`);
+        return res.status(200).json({ ok: true });
+      }
+    }
+
+    // SEO and content generation requests
+    if (naturalLanguageRequest.includes("seo") || 
+        naturalLanguageRequest.includes("content") ||
+        naturalLanguageRequest.includes("post") ||
+        naturalLanguageRequest.includes("article")) {
+
+      await sendMessage(chatId, `📝 Content/SEO request detected: "${message.text}"`);
+
+      try {
+        const taskType = naturalLanguageRequest.includes("seo") ? "seo_optimization" : "content_generation";
+        
+        const executeRes = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/manager/execute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            command: message.text,
+            task_type: taskType
+          })
+        });
+
+        return res.status(200).json({ ok: true });
+      } catch (err) {
+        await sendMessage(chatId, `⚠️ Error processing request: ${err.message}`);
+        return res.status(200).json({ ok: true });
+      }
+    }
+
+    // Default response for unrecognized commands
+    await sendMessage(chatId, `🤖 I understand you want: "${message.text}"\n\nI can help with:\n• UI changes ("change ui", "make it attractive")\n• Content ("create post about X")\n• SEO ("improve seo")\n\nOr try /propose <topic> for quick content creation.`rr.message}`);
       }
     }
 
