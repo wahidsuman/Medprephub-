@@ -23,6 +23,13 @@ GITHUB_REPO=your_repository_name
 OPENAI_API_KEY=sk-your_openai_api_key
 ```
 
+### Google APIs Integration
+```
+GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"..."}
+GA4_PROPERTY_ID=123456789
+SITE_URL=https://your-domain.com
+```
+
 ## GitHub Token Setup
 
 1. Go to GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
@@ -38,6 +45,33 @@ OPENAI_API_KEY=sk-your_openai_api_key
 3. Copy the bot token
 4. Get your chat ID by messaging @userinfobot
 5. Add both to environment variables
+
+## Google APIs Setup
+
+### 1. Create Google Cloud Project
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing one
+3. Enable these APIs:
+   - Google Search Console API
+   - Google Analytics Data API
+
+### 2. Create Service Account
+1. Go to IAM & Admin → Service Accounts
+2. Create new service account
+3. Download JSON key file
+4. Copy entire JSON content to `GOOGLE_SERVICE_ACCOUNT_KEY` env var
+
+### 3. Grant Access
+1. **Search Console**: Add service account email to your Search Console property
+2. **Analytics**: Add service account email to your GA4 property with Viewer role
+3. Get your GA4 property ID from Analytics admin
+
+### 4. Environment Variables
+```bash
+GOOGLE_SERVICE_ACCOUNT_KEY='{"type":"service_account",...}'
+GA4_PROPERTY_ID=123456789
+SITE_URL=https://your-domain.com
+```
 
 ## Features
 
