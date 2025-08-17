@@ -1,216 +1,174 @@
 // pages/api/telegram.js
-/* Telegram → GitHub PR bot with natural-language intents.
-   Commands it understands:
-   - /ping
-   - /propose <topic...>
-   - /approve  (merges most recent open PR from bot)
-   Natural language:
-   - "create a post on <topic>"
-   - "write about <topic>"
-   - "approve the latest PR", "merge it", "go ahead and publish", etc.
-*/
+//
+// Telegram webhook for your AI Website Manager.
+// Commands supported now:
+//   /ping                       -> health check
+//   /propose <title>            -> drafts a Markdown post and opens a PR
+//
+// Requires env vars in Vercel:
+//   TELEGRAM_BOT_TOKEN  (BotFather token)
+//   TELEGRAM_CHAT_ID    (your Telegram user ID; optional but recommended)
+//   GITHUB_TOKEN        (PAT classic with repo + workflow)
+//   GITHUB_REPO         (e.g. wahidsuman/Medprephub-)
+//   GITHUB_BRANCH       (optional; defaults to "main")
+//   SITE_CONTENT_DIR    (e.g. content/posts)
+//
+// Relies on lib/github.js (upsertPost) which handles creating the file/PR.
 
-import { Octokit } from "@octokit/rest";
-import OpenAI from "openai";
+const { upsertPost } = require("../../lib/github");
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID; // your numeric Telegram user id
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+// ---------------------- helpers ----------------------
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;          // PAT (classic) with repo + workflow
-const GITHUB_REPO = process.env.GITHUB_REPO;            // e.g. "wahidsuman/Medprephub-"
-const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
-const SITE_CONTENT_DIR = process.env.SITE_CONTENT_DIR || "content/posts"; // markdown folder
-
-// ------ helpers ------
-async function sendTG(chatId, text, opts = {}) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-  const body = { chat_id: chatId, text, parse_mode: "Markdown", ...opts };
-  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  return res.json();
-}
-
-function isAdmin(chatId) {
-  return String(chatId) === String(ADMIN_CHAT_ID);
-}
-
-function slugify(s) {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 80);
-}
-
-// Draft markdown using OpenAI
-async function draftMarkdown(topic) {
-  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-  const prompt = `Write a concise, high-quality Markdown blog post for a medical exam prep website.
-Topic: ${topic}
-Audience: NEET PG / INI-CET / FMGE aspirants.
-Include:
-- short intro
-- 4–6 key points in bullet form
-- 4 MCQs with answers & brief explanations
-- a short "Takeaway" section.
-Use headings and lists. Keep it factual, no fluff.`;
-
-  const resp = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.3,
+async function sendMessage(chatId, text, opts = {}) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  const payload = {
+    chat_id: chatId,
+    text,
+    parse_mode: opts.parse_mode || "Markdown",
+    disable_web_page_preview: true,
+  };
+  await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
-
-  const content = resp.choices?.[0]?.message?.content?.trim();
-  if (!content) throw new Error("OpenAI returned empty content");
-  return content;
 }
 
-// Create PR that adds a new .md file
-async function createPostPR({ topic, markdown, author = "bot" }) {
-  const octokit = new Octokit({ auth: GITHUB_TOKEN });
-  const [owner, repo] = GITHUB_REPO.split("/");
-
-  // 1) get base sha
-  const { data: baseRef } = await octokit.git.getRef({ owner, repo, ref: `heads/${GITHUB_BRANCH}` });
-  const baseSha = baseRef.object.sha;
-
-  // 2) create feature branch
-  const branchName = `bot/post-${slugify(topic)}-${Date.now()}`;
-  await octokit.git.createRef({
-    owner, repo, ref: `refs/heads/${branchName}`, sha: baseSha,
-  });
-
-  // 3) create file on branch
-  const dated = new Date().toISOString().slice(0, 10);
-  const filename = `${SITE_CONTENT_DIR}/${dated}-${slugify(topic)}.md`;
-  const contentB64 = Buffer.from(markdown, "utf8").toString("base64");
-
-  await octokit.repos.createOrUpdateFileContents({
-    owner, repo, path: filename, message: `feat(posts): add ${topic}`,
-    content: contentB64, branch: branchName, committer: { name: "AI Manager", email: "bot@local" }, author: { name: "AI Manager", email: "bot@local" },
-  });
-
-  // 4) open PR
-  const { data: pr } = await octokit.pulls.create({
-    owner, repo, head: branchName, base: GITHUB_BRANCH,
-    title: `Add post: ${topic}`,
-    body: `Proposed automatically by AI Manager.\n\nTopic: **${topic}**\nFile: \`${filename}\``,
-  });
-
-  return { prNumber: pr.number, prUrl: pr.html_url };
+function onlyOwner(chatId) {
+  const allowed = process.env.TELEGRAM_CHAT_ID
+    ? String(chatId) === String(process.env.TELEGRAM_CHAT_ID)
+    : true; // if not set, allow anyone (not recommended)
+  return allowed;
 }
 
-// Merge newest open PR created by the bot
-async function mergeLatestPR() {
-  const octokit = new Octokit({ auth: GITHUB_TOKEN });
-  const [owner, repo] = GITHUB_REPO.split("/");
-
-  const { data: prs } = await octokit.pulls.list({ owner, repo, state: "open", sort: "created", direction: "desc", per_page: 10 });
-  if (!prs.length) return { merged: false, message: "No open PRs to merge." };
-
-  const pr = prs[0];
-  const { data: merged } = await octokit.pulls.merge({ owner, repo, pull_number: pr.number, merge_method: "squash" });
-  return { merged: merged.merged, prNumber: pr.number, prUrl: pr.html_url };
+function extractCommand(text) {
+  // returns { cmd, arg }
+  const t = (text || "").trim();
+  if (!t.startsWith("/")) return { cmd: null, arg: null };
+  const firstSpace = t.indexOf(" ");
+  if (firstSpace === -1) return { cmd: t.toLowerCase(), arg: "" };
+  return {
+    cmd: t.slice(0, firstSpace).toLowerCase(),
+    arg: t.slice(firstSpace + 1).trim(),
+  };
 }
 
-// Very small intent parser
-function parseIntent(text) {
-  const t = text.trim();
+// Produce a simple Markdown skeleton for the post
+function makeMarkdownDraft(title) {
+  const safeTitle = title.replace(/"/g, '\\"');
+  return `---
+title: "${safeTitle}"
+date: "${new Date().toISOString()}"
+tags: ["draft"]
+---
 
-  // explicit slash commands
-  const mPropose = t.match(/^\/propose\s+(.+)/i);
-  if (mPropose) return { action: "propose", topic: mPropose[1].trim() };
+# ${title}
 
-  if (/^\/approve\b/i.test(t)) return { action: "approve" };
-  if (/^\/ping\b/i.test(t)) return { action: "ping" };
-
-  // natural language
-  const mCreate = t.match(/\b(create|write|draft|generate)\b.*\b(post|article)\b.*\b(on|about)\b\s+(.+)/i);
-  if (mCreate) return { action: "propose", topic: mCreate[4].trim() };
-
-  const mApprove = t.match(/\b(approve|merge|publish)\b.*(pr|pull request)?/i);
-  if (mApprove) return { action: "approve" };
-
-  return { action: "chat", text: t };
+Draft content generated via Telegram. Replace this with real content.
+`;
 }
 
-// Generic chat fallback (optional)
-async function smallTalk(text) {
-  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-  const resp = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: "You are a concise website manager assistant for a medical exam prep site. Keep replies short and helpful." },
-      { role: "user", content: text },
-    ],
-    temperature: 0.3,
-  });
-  return resp.choices?.[0]?.message?.content?.trim() || "Okay.";
-}
+// ---------------------- webhook handler ----------------------
 
-// ------ handler ------
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
-  try {
-    // Telegram update
-    const update = req.body;
-    const msg = update.message || update.edited_message;
-    if (!msg || !msg.text) return res.status(200).json({ ok: true });
-
-    const chatId = msg.chat.id;
-    const text = msg.text;
-
-    // only you (admin) can control publishing
-    if (!isAdmin(chatId)) {
-      await sendTG(chatId, "Sorry, this admin bot is private.");
-      return res.status(200).json({ ok: true });
-    }
-
-    const intent = parseIntent(text);
-
-    // /ping
-    if (intent.action === "ping") {
-      await sendTG(chatId, "✅ Bot is alive.");
-      return res.status(200).json({ ok: true });
-    }
-
-    // propose → draft + PR
-    if (intent.action === "propose") {
-      const topic = intent.topic;
-      if (!topic) {
-        await sendTG(chatId, "Please provide a topic, e.g. `/propose acute pancreatitis`");
-        return res.status(200).json({ ok: true });
-      }
-      await sendTG(chatId, `✍️ Drafting post on *${topic}*…`);
-      const md = await draftMarkdown(topic);
-      const { prNumber, prUrl } = await createPostPR({ topic, markdown: md });
-      await sendTG(chatId, `📬 Opened PR **#${prNumber}** for *${topic}*.\nReview & approve:\n${prUrl}`);
-      return res.status(200).json({ ok: true });
-    }
-
-    // approve → merge latest open PR
-    if (intent.action === "approve") {
-      await sendTG(chatId, "🔄 Merging the most recent open PR…");
-      const { merged, prNumber, prUrl, message } = await mergeLatestPR();
-      if (!merged) {
-        await sendTG(chatId, `⚠️ ${message || "Merge failed."}`);
-      } else {
-        await sendTG(chatId, `✅ Merged PR #${prNumber}.\n${prUrl}`);
-      }
-      return res.status(200).json({ ok: true });
-    }
-
-    // fallback chat
-    const reply = await smallTalk(intent.text);
-    await sendTG(chatId, reply);
-    return res.status(200).json({ ok: true });
-  } catch (err) {
-    console.error("Telegram handler error:", err);
-    try {
-      const chatId = req?.body?.message?.chat?.id;
-      if (chatId) await sendTG(chatId, `⚠️ Error: ${err.message}`);
-    } catch {}
-    return res.status(200).json({ ok: true });
+  // Basic GET ping (handy for visiting /api/telegram in a browser)
+  if (req.method === "GET") {
+    return res
+      .status(200)
+      .json({ ok: true, message: "Telegram webhook OK (GET)" });
   }
-}
+
+  // Telegram will POST updates here
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  try {
+    const update = req.body || {};
+    const message = update.message || update.edited_message;
+    if (!message || !message.text) {
+      return res.status(200).json({ ok: true, skipped: "no-text" });
+    }
+
+    const chatId = message.chat.id;
+
+    // Enforce private admin bot (only you)
+    if (!onlyOwner(chatId)) {
+      await sendMessage(chatId, "Sorry, this admin bot is private.");
+      return res.status(200).json({ ok: true, rejected: "not-owner" });
+    }
+
+    const { cmd, arg } = extractCommand(message.text);
+
+    // ----- /ping -----
+    if (cmd === "/ping") {
+      await sendMessage(chatId, "✅ Bot is working");
+      return res.status(200).json({ ok: true });
+    }
+
+    // ----- /start or /help -----
+    if (cmd === "/start" || cmd === "/help") {
+      await sendMessage(
+        chatId,
+        [
+          "*Medprephub Admin*",
+          "",
+          "Available commands:",
+          "• `/ping` – check bot status",
+          "• `/propose <title>` – open a PR with a new Markdown post",
+          "",
+          "_Example:_ `/propose Appendicitis for NEET PG`",
+        ].join("\n")
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    // ----- /propose <title> -----
+    if (cmd === "/propose") {
+      const title = arg || `New Post ${new Date().toISOString().slice(0, 10)}`;
+      await sendMessage(chatId, `📝 Drafting post on *${title}*...`);
+
+      const markdown = makeMarkdownDraft(title);
+
+      try {
+        // viaPR: true -> create a branch + PR so you can review/merge
+        const result = await upsertPost({
+          title,
+          markdown,
+          viaPR: true,
+        });
+
+        if (result.prUrl) {
+          await sendMessage(
+            chatId,
+            `✅ Proposed post: *${title}*\nPR #${result.prNumber}: ${result.prUrl}`
+          );
+        } else {
+          // If viaPR:false was used, you'd land here with direct publish
+          const fileUrl = `https://github.com/${process.env.GITHUB_REPO}/blob/${result.branch}/${result.path}`;
+          await sendMessage(chatId, `✅ Published directly: ${fileUrl}`);
+        }
+
+        return res.status(200).json({ ok: true });
+      } catch (err) {
+        console.error("propose error:", err);
+        await sendMessage(
+          chatId,
+          `⚠️ Error: ${err?.message || "failed to create PR"}`
+        );
+        return res.status(200).json({ ok: true, error: "propose-failed" });
+      }
+    }
+
+    // Fallback: normal chat message (no command)
+    await sendMessage(
+      chatId,
+      "I’m your website manager.\nUse `/propose <title>` to create a post PR."
+    );
+    return res.status(200).json({ ok: true });
+  } catch (e) {
+    console.error("telegram handler error:", e);
+    return res.status(200).json({ ok: false, error: String(e) });
+  }
+    }
