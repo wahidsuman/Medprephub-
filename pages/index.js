@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { getAllPosts } from "../lib/posts";
 
-export default function Home({ posts }) {
+export default function Home({ posts = [] }) {
   return (
     <main style={{ maxWidth: 720, margin: "2rem auto", padding: "0 1rem" }}>
       <header>
@@ -62,6 +62,7 @@ export async function getStaticProps() {
     };
   } catch (error) {
     console.error("Error fetching posts:", error);
+    // Return empty posts array if there's an error
     return { 
       props: { posts: [] }
     };
