@@ -1,6 +1,6 @@
 // pages/index.js
 import Link from "next/link";
-import { listPosts } from "../lib/posts"; // same helper used by /posts
+import { getAllPosts } from "../lib/posts"; // same helper used by /posts
 
 export default function Home({ posts }) {
   return (
@@ -31,6 +31,6 @@ export default function Home({ posts }) {
 }
 
 export async function getStaticProps() {
-  const posts = await listPosts();  // reads /content/posts/*.md
+  const posts = getAllPosts();  // reads /content/posts/*.md
   return { props: { posts } };
 }
