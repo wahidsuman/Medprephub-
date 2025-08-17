@@ -1,39 +1,25 @@
-import fs from "fs";
-import path from "path";
-import matter from "gray-matter";
+// pages/posts/index.js
 import Link from "next/link";
-
-const POSTS_DIR = path.join(process.cwd(), "content", "posts");
+import { getAllPosts } from "../../lib/posts";
 
 export async function getStaticProps() {
-  const files = fs.readdirSync(POSTS_DIR).filter(f => f.endsWith(".md"));
-  const posts = files.map((file) => {
-    const slug = file.replace(/\.md$/, "");
-    const { data } = matter(fs.readFileSync(path.join(POSTS_DIR, file), "utf-8"));
-    return {
-      slug,
-      title: data.title || slug,
-      date: data.date || null,
-    };
-  }).sort((a, b) => (new Date(b.date || 0)) - (new Date(a.date || 0)));
-
+  const posts = getAllPosts();
   return { props: { posts } };
 }
 
 export default function PostsIndex({ posts }) {
   return (
-    <main style={{maxWidth: 800, margin: "40px auto", padding: "0 16px"}}>
-      <h1>All Posts</h1>
-      <ul style={{listStyle:"none", padding:0}}>
+    <main style={{maxWidth: 720, margin: "2rem auto", padding: "0 1rem"}}>
+      <h1>Latest Posts</h1>
+      {posts.length === 0 && <p>No posts yet.</p>}
+      <ul>
         {posts.map(p => (
-          <li key={p.slug} style={{margin:"12px 0"}}>
-            <Link href={`/posts/${p.slug}`} style={{textDecoration:"none"}}>
-              {p.title}
-            </Link>
-            {p.date && <span style={{color:"#666"}}> — {new Date(p.date).toLocaleDateString()}</span>}
+          <li key={p.slug} style={{marginBottom: "1rem"}}>
+            <Link href={`/posts/${p.slug}`}><b>{p.title}</b></Link>
+            {p.date ? <div style={{opacity:.7}}>{p.date}</div> : null}
           </li>
         ))}
       </ul>
     </main>
   );
-                 }
+}
