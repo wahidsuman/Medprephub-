@@ -4,6 +4,17 @@ import matter from "gray-matter";
 import { remark } from "remark";
 import html from "remark-html";
 
+export async function getStaticPaths() {
+  const postsDir = path.join(process.cwd(), "content/posts");
+  const filenames = fs.readdirSync(postsDir);
+
+  const paths = filenames.map((filename) => ({
+    params: { slug: filename.replace(/\.md$/, "") },
+  }));
+
+  return { paths, fallback: false };
+}
+
 export async function getStaticProps({ params }) {
   const slug = params.slug;
   const fullPath = path.join(process.cwd(), "content/posts", `${slug}.md`);
