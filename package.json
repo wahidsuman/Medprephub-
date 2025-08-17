@@ -1,25 +1,43 @@
 {
-  "name": "medprephub",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
-  },
-  "dependencies": {
-    "@sanity/client": "^6.18.2",
-    "marked": "^12.0.2",
+
+"name": "medprephub",
+
+"version": "1.0.0",
+
+"private": true,
+
+"scripts": {
+
+"dev": "next dev",
+
+"build": "next build",
+
+"start": "next start",
+
+"lint": "next lint"
+
+},
+
+"dependencies": {
+
+"next": "14.2.3",
+
+"react": "^18",
+
+"react-dom": "^18",
+
+"marked": "^12.0.2",
+
 "node-fetch": "^3.3.2",
+
 "@sanity/client": "^6.15.7"
-    "gray-matter": "4.0.3",
-    "next": "14.2.3",
-    "react": "18.2.0",
-    "react-dom": "18.2.0",
-    "remark": "15.0.1",
-    "remark-html": "16.0.1"
-  },
-  "engines": {
-    "node": ">=18.17.0"
-  }
+
+},
+
+"engines": {
+
+"node": ">=18.17.0"
+
+}
+
 }
